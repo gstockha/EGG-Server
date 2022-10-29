@@ -17,11 +17,10 @@ wss.on('connection', ws => {
     initClient(ws, id);
     ws.send(JSON.stringify({ tag: 'id', id: id }));
     ws.id = id;
-    wss.broadcast(JSON.stringify({ tag: 'newplayer', count: playerCount, id: id }));
+    // wss.broadcast(JSON.stringify({ tag: 'newplayer', count: playerCount, id: id }));
 
     ws.on('message', message => {
-        let data = JSON.parse(message);
-        console.log(ws.id);
+        receiver(ws, JSON.parse(message));
     });
 
     ws.on('close', code => {
@@ -46,6 +45,7 @@ wss.broadcastExcept = (msg, ignore) => {
 }
 
 wss.sendTo = (msg, id) => {
+    if (!clients[id]) return;
     clients[id].socket.send(msg);
 }
 
@@ -64,31 +64,35 @@ function getID() {
     return id;
 }
 
-function receiver(ws, JSON) {
-    const tag = JSON.tag;
+function receiver(ws, json) {
+    const tag = json.tag;
     const id = ws.id;
     switch (tag) {
-        case 'move':
-            clients[id].x = JSON.x;
-            clients[id].y = JSON.y;
-            wss.sendTo(JSON.stringify({ tag: 'move', id: id, x: JSON.x, y: JSON.y }), id);
+        case 0: //move
+            clients[id].x = json.x;
+            clients[id].y = json.y;
+            wss.sendTo(JSON.stringify({ tag: 0, id: id, x: json.x, y: json.y }), json.target);
             break;
-        case 'shoot':
-            wss.sendTo(JSON.stringify({ tag: 'shoot', id: id, type: JSON.type, x: JSON.x, y: JSON.y }), id);
+        case 1: //shoot
+            wss.sendTo(JSON.stringify({ tag: 1, id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, onPlayer: json.onPlayer }), json.target);
             break;
-        case 'health':
-            clients[id].health = JSON.health;
-            wss.broadcastExcept(JSON.stringify({ tag: 'health', id: id, health: JSON.health }), id);
+        case 2: //health
+            clients[id].health = json.health;
+            wss.broadcastExcept(JSON.stringify({ tag: 2, id: id, health: json.health }), id);
             break;
-        case 'death':
+        case 3: //death
             clients[id].health = 0;
-            wss.broadcastExcept(JSON.stringify({ tag: 'death', id: id }), id);
+            wss.broadcastExcept(JSON.stringify({ tag: 3, id: id }), id);
             alivePlayers--;
             if (alivePlayers <= 1) endGame();
+            break;
+        case 4: //status
+            wss.broadcastExcept(JSON.stringify({ tag: 4, id: id, powerup: json.powerup, size: json.size }), id);
             break;
     }
 }
 
 function endGame() {
-
+    wss.broadcast(JSON.stringify({ tag: 'endgame' }));
+    alivePlayers = 0;
 }
