@@ -24,9 +24,9 @@ wss.on('connection', ws => {
     ws.on('close', code => {
         playerCount--;
         if (clients[ws.id]) {
-            console.log(`Client ${ws.id} disconnected, code: ${code}`);
+            console.log(`Client ${clients[ws.id].name} disconnected, code: ${code}`);
             wss.broadcast(JSON.stringify({ tag: 'playerleft', count: playerCount, id: ws.id }));
-            clients[ws.id] = null;
+            clients[ws.id] = undefined;
         }
     });
 
@@ -40,7 +40,7 @@ wss.broadcast = msg => {
 
 wss.broadcastExcept = (msg, ignore) => {
      clients.forEach(client => {
-        if (client.id !== ignore) client.socket.send(msg);
+        if (client && client.id !== ignore) client.socket.send(msg);
     })
 }
 
