@@ -3,8 +3,9 @@ const wss = new ws({ port: 3000 });
 const clients = [];
 let playerCount = 0;
 let alivePlayers = 0;
+let lobby = true;
 // enum tags {JOINED, MOVE, SHOOT, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
-const tags = {"JOINED": 0, "MOVE": 1, "SHOOT": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7};
+const tags = {"JOINED": 0, "MOVE": 1, "SHOOT": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8};
 
 console.log("server is running on port 3000");
 
@@ -25,7 +26,7 @@ wss.on('connection', ws => {
         playerCount--;
         if (clients[ws.id]) {
             console.log(`Client ${clients[ws.id].name} disconnected, code: ${code}`);
-            wss.broadcast(JSON.stringify({ tag: 'playerleft', count: playerCount, id: ws.id }));
+            wss.broadcast(JSON.stringify({ tag: tags["PLAYERLEFT"], playerCount, id: ws.id }));
             clients[ws.id] = undefined;
         }
     });
@@ -91,7 +92,7 @@ function receiver(ws, json) {
             const assignedID = (clients[json.prefID] || !json.prefID) ? getID() : json.prefID;
             initClient(ws, assignedID, json.name);
             console.log(`${clients[assignedID].name} joined`);
-            ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList() }));
+            ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), lobby: lobby }));
             wss.broadcastExcept(JSON.stringify({ tag: tags["NEWPLAYER"], id: assignedID, name: clients[assignedID].name }), ws.id);
             break;
         case tags["MOVE"]: //move
