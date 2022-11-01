@@ -98,7 +98,9 @@ function receiver(ws, json) {
         case tags["MOVE"]: //move
             clients[id].x = json.x;
             clients[id].y = json.y;
-            wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y }), json.target);
+            clients[id].velx = json.velx;
+            clients[id].vely = json.vely;
+            wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, dir: json.dir }), json.target ? (!lobby) : id);
             break;
         case tags["SHOOT"]: //shoot
             wss.sendTo(JSON.stringify({ tag: tags["SHOOT"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, onPlayer: json.onPlayer }), json.target);
