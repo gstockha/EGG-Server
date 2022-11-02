@@ -4,8 +4,8 @@ const clients = [];
 let playerCount = 0;
 let alivePlayers = 0;
 let lobby = true;
-// enum tags {JOINED, MOVE, SHOOT, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
-const tags = {"JOINED": 0, "MOVE": 1, "SHOOT": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8};
+// enum tags {JOINED, MOVE, EGG, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
+const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9};
 
 console.log("server is running on port 3000");
 
@@ -47,6 +47,7 @@ wss.broadcastExcept = (msg, ignore) => {
 
 wss.sendTo = (msg, id) => {
     if (!clients[id]) return;
+    console.log(clients[id].name);
     clients[id].socket.send(msg);
 }
 
@@ -100,10 +101,11 @@ function receiver(ws, json) {
             clients[id].y = json.y;
             clients[id].velx = json.velx;
             clients[id].vely = json.vely;
-            wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, dir: json.dir }), json.target ? (!lobby) : id);
+            if (!lobby) wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav }), json.target);
+            else wss.broadcastExcept(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav }), id);
             break;
-        case tags["SHOOT"]: //shoot
-            wss.sendTo(JSON.stringify({ tag: tags["SHOOT"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, onPlayer: json.onPlayer }), json.target);
+        case tags["EGG"]: //EGG
+            wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id }), json.target);
             break;
         case tags["HEALTH"]: //health
             clients[id].health = json.health;
@@ -118,6 +120,8 @@ function receiver(ws, json) {
         case tags["STATUS"]: //status
             wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, size: json.size }), id);
             break;
+        case tags["EGGCONFIRM"]: //egg confirm
+            wss.sendTo(JSON.stringify({ tag: tags["EGGCONFIRM"] }), json.target);
     }
 }
 
