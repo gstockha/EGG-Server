@@ -5,7 +5,7 @@ let playerCount = 0;
 let alivePlayers = 0;
 let lobby = true;
 // enum tags {JOINED, MOVE, EGG, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
-const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9};
+const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10};
 
 console.log("server is running on port 3000");
 
@@ -101,8 +101,14 @@ function receiver(ws, json) {
             clients[id].y = json.y;
             clients[id].velx = json.velx;
             clients[id].vely = json.vely;
-            if (!lobby) wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav }), json.target);
-            else wss.broadcastExcept(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav }), id);
+            if (!lobby){
+                wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
+                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel }), json.target);
+            }
+            else{
+                wss.broadcastExcept(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
+                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel }), id);
+            }
             break;
         case tags["EGG"]: //EGG
             wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id }), json.target);
@@ -122,6 +128,10 @@ function receiver(ws, json) {
             break;
         case tags["EGGCONFIRM"]: //egg confirm
             wss.sendTo(JSON.stringify({ tag: tags["EGGCONFIRM"] }), json.target);
+            break;
+        case tags["BUMP"]: //bump
+            wss.sendTo(JSON.stringify({ tag: tags["BUMP"], direction: json.direction, dirChange: json.dirChange}), json.target);
+            break;
     }
 }
 
