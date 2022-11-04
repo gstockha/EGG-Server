@@ -103,11 +103,11 @@ function receiver(ws, json) {
             clients[id].vely = json.vely;
             if (!lobby){
                 wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
-                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel }), json.target);
+                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel, dir: json.dir }), json.target);
             }
             else{
                 wss.broadcastExcept(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
-                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel }), id);
+                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel, dir: json.dir }), id);
             }
             break;
         case tags["EGG"]: //EGG
@@ -130,7 +130,7 @@ function receiver(ws, json) {
             wss.sendTo(JSON.stringify({ tag: tags["EGGCONFIRM"] }), json.target);
             break;
         case tags["BUMP"]: //bump
-            wss.sendTo(JSON.stringify({ tag: tags["BUMP"], direction: json.direction, dirChange: json.dirChange}), json.target);
+            wss.broadcast(JSON.stringify({ tag: tags["BUMP"], direction: json.direction, dirChange: json.dirChange, target: json.target}));
             break;
     }
 }
