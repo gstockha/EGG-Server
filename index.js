@@ -3,9 +3,10 @@ const wss = new ws({ port: 3000 });
 const clients = [];
 let playerCount = 0;
 let alivePlayers = 0;
-let lobby = true;
+let lobby = false;
 // enum tags {JOINED, MOVE, EGG, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
-const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10};
+const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "DEATH": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10,
+"ITEMSEND": 11, "ITEMDESTROY": 12};
 
 console.log("server is running on port 3000");
 
@@ -47,7 +48,6 @@ wss.broadcastExcept = (msg, ignore) => {
 
 wss.sendTo = (msg, id) => {
     if (!clients[id]) return;
-    console.log(clients[id].name);
     clients[id].socket.send(msg);
 }
 
@@ -68,6 +68,7 @@ function initClient(ws, id, name) {
     clients[id].x = 0;
     clients[id].y = 0;
     clients[id].health = 5;
+    clients[id].scale = ".6";
 }
 
 function getID() {
@@ -111,11 +112,11 @@ function receiver(ws, json) {
             }
             break;
         case tags["EGG"]: //EGG
-            wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id }), json.target);
+            wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id, toPlayer: json.toPlayer }), json.target);
             break;
         case tags["HEALTH"]: //health
             clients[id].health = json.health;
-            wss.broadcastExcept(JSON.stringify({ tag: tags["HEALTH"], id: id, health: json.health }), id);
+            wss.broadcastExcept(JSON.stringify({ tag: tags["HEALTH"], id: id, lastHit: json.lastHit, health: json.health, eggId: json.eggId }), id);
             break;
         case tags["DEATH"]: //death
             clients[id].health = 0;
@@ -124,13 +125,21 @@ function receiver(ws, json) {
             if (alivePlayers <= 1) endGame();
             break;
         case tags["STATUS"]: //status
-            wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, size: json.size }), id);
+            if (json.powerup !== "none") wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, scale: json.scale }), id);
+            else wss.sendTo(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, scale: json.scale }), json.target); //just send size to target
+            clients[id].scale = json.scale;
             break;
         case tags["EGGCONFIRM"]: //egg confirm
             wss.sendTo(JSON.stringify({ tag: tags["EGGCONFIRM"] }), json.target);
             break;
         case tags["BUMP"]: //bump
-            wss.broadcast(JSON.stringify({ tag: tags["BUMP"], direction: json.direction, dirChange: json.dirChange, target: json.target}));
+            wss.broadcast(JSON.stringify({ tag: tags["BUMP"], direction: json.direction, dirChange: json.dirChange, target: json.target }));
+            break;
+        case tags["ITEMSEND"]: //item send
+            wss.sendTo(JSON.stringify({ tag: tags["ITEMSEND"], itemId: json.itemId, category: json.category, type: json.type, x: json.x, y: json.y, duration: json.duration }), json.target);
+            break;
+        case tags["ITEMDESTROY"]: //item destroy
+            wss.sendTo(JSON.stringify({ tag: tags["ITEMDESTROY"], itemId: json.itemId, eat: json.eat }), json.target);
             break;
     }
 }
