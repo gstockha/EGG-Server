@@ -2,11 +2,13 @@ const ws = require('ws').Server;
 const wss = new ws({ port: 3000 });
 const clients = [];
 let playerCount = 0;
-let alivePlayers = 0;
+let activePlayers = 0;
 let lobby = true;
-// enum tags {JOINED, MOVE, EGG, HEALTH, DEATH, STATUS, NEWPLAYER, JOINCONFIRM}
+let lobbyCountdown = false;
+let lobbyTimer = undefined;
+const timerLength = 5;
 const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "READY": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10,
-"ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13};
+"ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13, "LABEL": 14, "BEGIN": 15, "TARGETSTATUS": 16};
 
 console.log("server is running on port 3000");
 
@@ -25,15 +27,23 @@ wss.on('connection', ws => {
 
     ws.on('close', code => {
         playerCount--;
-        if (clients[ws.id].active){
+        if (!clients[ws.id]) return;
+        console.log(`Player ${clients[ws.id].name} disconnected, code: ${code}, ${playerCount} players connected`);
+        wss.broadcast(JSON.stringify({ tag: tags["PLAYERLEFT"], playerCount, id: ws.id }));
+        if (playerCount < 1) endGame();
+        else if (!lobby && clients[ws.id].active){
+            clients[ws.id].active = false;
             activePlayers--;
-            if (activePlayers === 0) endGame();   
+            if (activePlayers < 1) endGame();   
         }
-        if (clients[ws.id]) {
-            console.log(`Player ${clients[ws.id].name} disconnected, code: ${code}, ${playerCount} players connected`);
-            wss.broadcast(JSON.stringify({ tag: tags["PLAYERLEFT"], playerCount, id: ws.id }));
-            clients[ws.id] = undefined;
+        else if (lobby){
+            if (playerCount < 2) {
+                lobbyCountdown = false;
+                wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: "Waiting for more players...", timer: 0 }));
+                if (lobbyTimer) clearTimeout(lobbyTimer);
+            }
         }
+        clients[ws.id] = undefined;
     });
 
 });
@@ -92,6 +102,24 @@ function getPlayerNameList() {
     return list;
 }
 
+function beginGame(){
+    if (lobbyCountdown){
+        lobbyCountdown = false;
+        wss.broadcast(JSON.stringify({ tag: tags["READY"] })); //send out a ready confirmation
+        lobbyTimer = setTimeout(beginGame, 5000); // make set timeout that calls beginGame() after 5 seconds
+        return;
+    }
+    // drop each player that isn't ready
+    for (let i = 0; i < clients.length; i++){
+        if (!clients[i]) continue;
+        if (!clients[i].ready) clients[i].socket.close();
+    }
+    if (playerCount < 2) return;
+    lobby = false;
+    activePlayers = playerCount;
+    wss.broadcast(JSON.stringify({ tag: tags["BEGIN"] }));
+}
+
 function receiver(ws, json) {
     const tag = json.tag;
     const id = ws.id;
@@ -102,6 +130,14 @@ function receiver(ws, json) {
             console.log(`${clients[assignedID].name} joined, ${playerCount} players connected`);
             ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), lobby: lobby }));
             wss.broadcastExcept(JSON.stringify({ tag: tags["NEWPLAYER"], id: assignedID, name: clients[assignedID].name }), ws.id);
+            if (lobby){
+                if (playerCount < 2) wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: "Waiting for more players...", timer: 0 }));
+                else{
+                    wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timerLength} seconds!`, timer: timerLength }));
+                    lobbyCountdown = true;
+                    lobbyTimer = setTimeout(beginGame, timerLength * 1000); // make set timeout that calls beginGame() after x seconds
+                }
+            }
             break;
         case tags["MOVE"]: //move
             clients[id].x = json.x;
@@ -123,17 +159,18 @@ function receiver(ws, json) {
         case tags["HEALTH"]: //health
             clients[id].health = json.health;
             wss.broadcastExcept(JSON.stringify({ tag: tags["HEALTH"], id: id, lastHit: json.lastHit, health: json.health, eggId: json.eggId }), id);
-            if (health <= 0) {
+            if (json.health <= 0) {
                 activePlayers--;
-                if (alivePlayers <= 1) endGame();
+                client[id].active = false;
+                if (activePlayers <= 1) endGame();
             }
             break;
         case tags["READY"]: //ready
             clients[id].ready = true;
+            console.log(`${clients[id].name} is ready`);
             break;
         case tags["STATUS"]: //status
-            if (json.powerup !== "none") wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, scale: json.scale }), id);
-            else wss.sendTo(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, scale: json.scale }), json.target); //just send size to target
+            wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: id, powerup: json.powerup, scale: json.scale }), id);
             clients[id].scale = json.scale;
             break;
         case tags["EGGCONFIRM"]: //egg confirm
@@ -148,10 +185,14 @@ function receiver(ws, json) {
         case tags["ITEMDESTROY"]: //item destroy
             wss.sendTo(JSON.stringify({ tag: tags["ITEMDESTROY"], itemId: json.itemId, eat: json.eat }), json.target);
             break;
+        case tags["TARGETSTATUS"]: //target status
+            if (!clients[json.target]) return;
+            wss.sendTo(JSON.stringify({ tag: tags["TARGETSTATUS"], scale: clients[json.target].scale, x: clients[json.target].x, y: clients[json.target].y }), id);
+            break;
     }
 }
 
 function endGame() {
-    wss.broadcast(JSON.stringify({ tag: 'endgame' }));
-    alivePlayers = 0;
+    console.log("Game ended");
+    lobby = true;
 }
