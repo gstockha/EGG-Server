@@ -90,8 +90,8 @@ function receiver(ws, json) {
             const assignedID = (clients[json.prefID] || !json.prefID) ? getID() : json.prefID;
             initClient(ws, assignedID, json.name);
             console.log(`${clients[assignedID].name} joined, ${playerCount} players connected`);
-            ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), activeList: getPlayerActiveList(),
-            lobby: lobby }));
+            ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), bottedPlayers: sendActivePlayers(),
+            lobby }));
             wss.broadcastExcept(JSON.stringify({ tag: tags["NEWPLAYER"], id: assignedID, name: clients[assignedID].name }), ws.id);
             if (lobby){
                 if (idleTimer === undefined) idleTimer = setTimeout(idlePlayers, idleTime); //idle timer every 2 seconds
@@ -110,9 +110,9 @@ function receiver(ws, json) {
                     }
                 }
             }
-            else{ //game in progress
-                clients[assignedID].active = false;
-            }
+            // else{ //game in progress
+            //     clients[assignedID].active = false;
+            // }
             break;
         case tags["MOVE"]: //move
             clients[id].x = json.x;
@@ -133,9 +133,11 @@ function receiver(ws, json) {
                     });
                 }
             }
-            else{
-                wss.broadcastExcept(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
-                shoveCounter: json.shoveCounter, shoveVel: json.shoveVel, dir: json.dir }), id);
+            else{ //send to each inactive client
+                clients.forEach(client => {
+                    if (client && !client.active) wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
+                    shoveCounter: json.shoveCounter, shoveVel: json.shoveVel, dir: json.dir }), client.id);
+                });
             }
             break;
         case tags["EGG"]: //EGG
@@ -224,6 +226,7 @@ function receiver(ws, json) {
         case tags["LOBBYPLAYER"]: //player who exits from main game and goes back to lobby
             wss.broadcastExcept(JSON.stringify({ tag: tags["LOBBYPLAYER"], id }), id);
             clients[id].active = false;
+            clients[id].spectators = [];
             break;
     }
 }
@@ -252,20 +255,20 @@ function getID(){
     return id;
 }
 
+function sendActivePlayers(){
+    let list = [];
+    for (let i = 0; i < clients.length; i++){
+        if (!clients[i]) continue;
+        list.push({ id: i, active: clients[i].active });
+    }
+    return list;
+}
+
 function getPlayerNameList(){
     let list = [];
     for (let i = 0; i < 12; i++) {
         if (clients[i]) list.push(clients[i].name);
         else list.push(null);
-    }
-    return list;
-}
-
-function getPlayerActiveList(){
-    let list = [];
-    for (let i = 0; i < 12; i++) {
-        if (clients[i]) list.push(clients[i].active);
-        else list.push(false);
     }
     return list;
 }
