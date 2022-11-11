@@ -7,6 +7,7 @@ let activePlayers = 0;
 let lobby = true;
 let lobbyCountdown = false; //initial lobby countdown, timer checks ready status when false and lobbyTimer is on
 let lobbyTimer = undefined;
+let lobbyTimerStart = 0;
 let idleTimer = undefined;
 let endTimer = undefined;
 const idleTime = 2000; //2 seconds
@@ -96,12 +97,17 @@ function receiver(ws, json) {
                 if (idleTimer === undefined) idleTimer = setTimeout(idlePlayers, idleTime); //idle timer every 2 seconds
                 if (playerCount < 2) wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: "Waiting for more players...", timer: 0 }));
                 else{
-                    wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timerLength} seconds!`, timer: timerLength }));
                     if (lobbyTimer == undefined){
+                        wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timerLength} seconds!`, timer: timerLength }));
                         lobbyCountdown = true;
                         lobbyTimer = setTimeout(beginGame, timerLength * 1000); //make set timeout that calls beginGame() after x seconds
+                        lobbyTimerStart = Date.now();
                     }
-                    else ws.send(JSON.stringify({ tag: tags["READY"] }));
+                    else{
+                        ws.send(JSON.stringify({ tag: tags["READY"] }));
+                        const timeLeft = timerLength - Math.ceil(((new Date()).getTime() - lobbyTimerStart) / 1000);
+                        ws.send(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timeLeft} seconds!`, timer: timeLeft }));
+                    }
                 }
             }
             else{ //game in progress
@@ -115,7 +121,7 @@ function receiver(ws, json) {
             clients[id].vely = json.vely;
             if (clients[id].idle < 6) wss.broadcastExcept(JSON.stringify({ tag: tags["IDLE"], id, idle: false }), id);
             clients[id].idle = 10;
-            if (!lobby){
+            if (clients[id].active){
                 if (clients[json.target]){
                     wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
                     shoveCounter: json.shoveCounter, shoveVel: json.shoveVel, dir: json.dir }), json.target);
@@ -217,6 +223,7 @@ function receiver(ws, json) {
             break;
         case tags["LOBBYPLAYER"]: //player who exits from main game and goes back to lobby
             wss.broadcastExcept(JSON.stringify({ tag: tags["LOBBYPLAYER"], id }), id);
+            clients[id].active = false;
             break;
     }
 }
@@ -305,6 +312,7 @@ function endGame(winner = 99) {
             wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timerLength} seconds!`, timer: timerLength }));
             lobbyCountdown = true;
             lobbyTimer = setTimeout(beginGame, timerLength * 1000); //make set timeout that calls beginGame() after x seconds
+            lobbyTimerStart = Date.now();
         }
     }
 }
