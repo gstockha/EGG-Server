@@ -141,11 +141,11 @@ function receiver(ws, json) {
             }
             break;
         case tags["EGG"]: //EGG
-            if (json.target != 99 && clients[json.target]){
+            if (json.target != 99 && clients[json.target] && clients[json.target].active){
                 wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id, toPlayer: json.toPlayer }),
                 json.target);
             }
-            if (clients[id].spectators.length > 0){
+            if (!json.toPlayer && clients[id].spectators.length > 0){
                 clients[id].spectators.forEach(spectator => {
                     wss.sendTo(JSON.stringify({ tag: tags["EGG"], id: json.id, type: json.type, x: json.x, y: json.y, bltSpd: json.bltSpd, sender: id, toPlayer: json.toPlayer }),
                     spectator);
@@ -173,7 +173,15 @@ function receiver(ws, json) {
             console.log(`${clients[id].name} is ready`);
             break;
         case tags["STATUS"]: //status
-            wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: json.id, powerup: json.powerup, scale: json.scale }), id);
+            if (json.target == 99) wss.broadcastExcept(JSON.stringify({ tag: tags["STATUS"], id: json.id, powerup: json.powerup, scale: json.scale }), id);
+            else{
+                if (clients[json.target]) wss.sendTo(JSON.stringify({ tag: tags["STATUS"], id: json.id, powerup: json.powerup, scale: json.scale }), json.target);
+                if (clients[id].spectators.length > 0){
+                    clients[id].spectators.forEach(spectator => {
+                        wss.sendTo(JSON.stringify({ tag: tags["STATUS"], id: json.id, powerup: json.powerup, scale: json.scale }), spectator);
+                    });
+                }
+            }
             if (clients[json.id]) clients[json.id].scale = json.scale; //if not a bot
             break;
         case tags["EGGCONFIRM"]: //egg confirm
