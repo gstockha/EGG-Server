@@ -12,8 +12,10 @@ let idleTimer = undefined;
 let endTimer = undefined;
 const idleTime = 2000; //2 seconds
 const timerLength = 5;
+const idleCap = 10;
 const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "READY": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10,
-"ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13, "LABEL": 14, "BEGIN": 15, "TARGETSTATUS": 16, "SPECTATE": 17, "IDLE": 18, "ENDGAME": 19, "LOBBYPLAYER": 20};
+"ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13, "LABEL": 14, "BEGIN": 15, "TARGETSTATUS": 16, "SPECTATE": 17, "IDLE": 18, "ENDGAME": 19, "LOBBYPLAYER": 20,
+"HEALTHSTATES": 21};
 
 console.log("server is running on port 3000");
 
@@ -87,7 +89,7 @@ function receiver(ws, json) {
     const id = ws.id;
     switch (tag) {
         case tags["JOINED"]: //joined
-            const assignedID = (clients[json.prefID] || !json.prefID) ? getID() : json.prefID;
+            const assignedID = (clients[json.prefID] || !json.prefID) ? getID(json.prefID) : json.prefID;
             initClient(ws, assignedID, json.name);
             console.log(`${clients[assignedID].name} joined, ${playerCount} players connected`);
             ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), bottedPlayers: sendActivePlayers(),
@@ -110,17 +112,25 @@ function receiver(ws, json) {
                     }
                 }
             }
-            // else{ //game in progress
-            //     clients[assignedID].active = false;
-            // }
+            else{ //game in progress, send health states
+                if (playerCount < 12){ //bots exist
+                    //find active client who's not idle and send them a "HEATLHSTATES" message
+                    for (let i = 0; i < clients.length; i++){
+                        if (clients[i] && clients[i].active && clients[i].idle >= (idleCap - 1)){
+                            wss.sendTo(JSON.stringify({ tag: tags["HEALTHSTATES"], target: ws.id, states: [] }), i);
+                            break;
+                        }
+                    }
+                }
+            }
             break;
         case tags["MOVE"]: //move
             clients[id].x = json.x;
             clients[id].y = json.y;
             clients[id].velx = json.velx;
             clients[id].vely = json.vely;
-            if (clients[id].idle < 6) wss.broadcastExcept(JSON.stringify({ tag: tags["IDLE"], id, idle: false }), id);
-            clients[id].idle = 10;
+            if (clients[id].idle <= (idleCap - 5)) wss.broadcastExcept(JSON.stringify({ tag: tags["IDLE"], id, idle: false }), id);
+            clients[id].idle = idleCap;
             if (clients[id].active){
                 if (clients[json.target]){
                     wss.sendTo(JSON.stringify({ tag: tags["MOVE"], id: id, x: json.x, y: json.y, velx: json.velx, vely: json.vely, grav: json.grav,
@@ -236,6 +246,19 @@ function receiver(ws, json) {
             clients[id].active = false;
             clients[id].spectators = [];
             break;
+        case tags["HEALTHSTATES"]: //health states received from a trusted client to send to new player
+            if (!clients[json.target] || !json.states) return;
+            const healthStates = json.states;
+            const actualState = [];
+            for (let i = 0; i < healthStates.length; i++){
+                if (healthStates[i] > 5){ //player
+                    if (clients[i]) actualState.push(clients[i].health);
+                    else actualState.push(0);
+                }
+                else actualState.push(healthStates[i]); //bot
+            }
+            wss.sendTo(JSON.stringify({ tag: tags["HEALTHSTATES"], states: actualState }), json.target);
+            break;
     }
 }
 
@@ -253,13 +276,16 @@ function initClient(ws, id, name) {
     clients[id].name = name;
     clients[id].socket = ws;
     clients[id].id = id;
-    clients[id].idle = 10;
+    clients[id].idle = idleCap;
     refreshClient(id);
 }
 
-function getID(){
-    let id = 0;
-    while (clients[id]) id++;
+function getID(prefID){
+    let id = prefID;
+    while (clients[id]){
+        id++;
+        if (id >= 12) id = 0;
+    }
     return id;
 }
 
@@ -313,18 +339,20 @@ function endGame(winner = 99) {
     console.log("Game ended");
     lobby = true;
     clearTimeout(endTimer);
-    wss.broadcast(JSON.stringify({ tag: tags["ENDGAME"], winner }));
+    lobbyCountdown = false;
     if (playerCount > 0){
         for (let i = 0; i < clients.length; i++) {
             if (clients[i]) refreshClient(i);
         }
         if (playerCount < 2) wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: "Waiting for more players...", timer: 0 }));
         else{
+            console.log("Starting lobby countdown");
             wss.broadcast(JSON.stringify({ tag: tags["LABEL"], label: `Starting in ${timerLength} seconds!`, timer: timerLength }));
             lobbyCountdown = true;
             lobbyTimer = setTimeout(beginGame, timerLength * 1000); //make set timeout that calls beginGame() after x seconds
             lobbyTimerStart = Date.now();
         }
+        wss.broadcast(JSON.stringify({ tag: tags["ENDGAME"], winner }));
     }
 }
 
@@ -333,7 +361,7 @@ function idlePlayers(){
         if (clients[i]){
             clients[i].idle --;
             // if (clients[i].idle == 5) console.log(`${clients[i].name} is idle`);
-            if (clients[i].idle == 5) wss.broadcast(JSON.stringify({ tag: tags["IDLE"], id: i, idle: true }));
+            if (clients[i].idle == (idleCap - 5)) wss.broadcast(JSON.stringify({ tag: tags["IDLE"], id: i, idle: true }));
             //else if (clients[i].idle < 1) clients[i].socket.close();
         }
     }
