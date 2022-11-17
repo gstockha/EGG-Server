@@ -10,12 +10,15 @@ let lobbyTimer = undefined;
 let lobbyTimerStart = 0;
 let idleTimer = undefined;
 let endTimer = undefined;
+let gameTimer = undefined;
+let gameTime = 0;
 const idleTime = 2000; //2 seconds
 const timerLength = 5;
 const idleCap = 10;
+const difficulty = 1;
 const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "READY": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10,
 "ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13, "LABEL": 14, "BEGIN": 15, "TARGETSTATUS": 16, "SPECTATE": 17, "IDLE": 18, "ENDGAME": 19, "LOBBYPLAYER": 20,
-"HEALTHSTATES": 21};
+"HEALTHSTATES": 21, "TIME": 22};
 
 console.log("server is running on port 3000");
 
@@ -93,7 +96,7 @@ function receiver(ws, json) {
             initClient(ws, assignedID, json.name);
             console.log(`${clients[assignedID].name} joined, ${playerCount} players connected`);
             ws.send(JSON.stringify({ tag: tags["JOINCONFIRM"], id: assignedID, name: clients[assignedID].name, nameMap: getPlayerNameList(), bottedPlayers: sendActivePlayers(),
-            lobby }));
+            lobby, difficulty }));
             wss.broadcastExcept(JSON.stringify({ tag: tags["NEWPLAYER"], id: assignedID, name: clients[assignedID].name }), ws.id);
             if (lobby){
                 if (idleTimer === undefined) idleTimer = setTimeout(idlePlayers, idleTime); //idle timer every 2 seconds
@@ -233,7 +236,7 @@ function receiver(ws, json) {
                 if (clients[json.target].spectators.includes(id) == false) clients[json.target].spectators.push(id);
             }
             else if (clients[json.target].spectators.includes(id)) clients[json.target].spectators.splice(clients[json.target].spectators.indexOf(id), 1);
-            wss.sendTo(JSON.stringify({ tag: tags["SPECTATE"], spectated: json.spectating }), json.target);
+            wss.sendTo(JSON.stringify({ tag: tags["SPECTATE"], spectated: clients[json.target].spectators.length > 0 }), json.target);
             break;
         case tags["ENDGAME"]: //end game
             if (activePlayers < 2){
@@ -333,6 +336,8 @@ function beginGame(){
     clearTimeout(lobbyTimer);
     lobbyTimer = undefined;
     wss.broadcast(JSON.stringify({ tag: tags["BEGIN"] }));
+    gameTimer = setTimeout(sendGameTime, 4000); //wait initial 4 seconds
+    gameTime = 1; //init
 }
 
 function endGame(winner = 99) {
@@ -340,6 +345,11 @@ function endGame(winner = 99) {
     lobby = true;
     clearTimeout(endTimer);
     lobbyCountdown = false;
+    if (gameTimer) {
+        clearTimeout(gameTimer);
+        gameTimer = undefined;
+    }
+    gameTime = 0;
     if (playerCount > 0){
         for (let i = 0; i < clients.length; i++) {
             if (clients[i]) refreshClient(i);
@@ -356,11 +366,25 @@ function endGame(winner = 99) {
     }
 }
 
+function sendGameTime(){
+    if (!gameTimer) return;
+    clearTimeout(gameTimer);
+    if (gameTime == 1){ //some retarded work around for passing an initialize param which it doesn't like for some reason
+        gameTimer = setTimeout(sendGameTime, 90000 - (difficulty * 20000)); //send every 9 seconds - 2 seconds per difficulty
+        gameTime = 0;
+        return;
+    }
+    gameTime += 90 - (difficulty * 20);
+    wss.broadcast(JSON.stringify({ tag: tags["TIME"], time: gameTime.toString() }));
+    gameTimer = setTimeout(sendGameTime, 90000 - (difficulty * 20000)); //send every 9 seconds - 2 seconds per difficulty
+    console.log(gameTime);
+}
+
 function idlePlayers(){
     for (let i = 0; i < clients.length; i++) {
         if (clients[i]){
             clients[i].idle --;
-            // if (clients[i].idle == 5) console.log(`${clients[i].name} is idle`);
+            if (clients[i].idle == 5) console.log(`${clients[i].name} is idle`);
             if (clients[i].idle == (idleCap - 5)) wss.broadcast(JSON.stringify({ tag: tags["IDLE"], id: i, idle: true }));
             //else if (clients[i].idle < 1) clients[i].socket.close();
         }
