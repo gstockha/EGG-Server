@@ -1,9 +1,10 @@
 const ws = require('ws').Server;
-const wss = new ws({ port: 3000 });
+const wss = new ws({ port: 7100 });
 const clients = [];
 const version = "A_1.0";
 let playerCount = 0;
 let activePlayers = 0;
+let winner = 99;
 let lobby = true;
 let lobbyCountdown = false; //initial lobby countdown, timer checks ready status when false and lobbyTimer is on
 let lobbyTimer = undefined;
@@ -13,14 +14,14 @@ let endTimer = undefined;
 let gameTimer = undefined;
 let gameTime = 0;
 const idleTime = 2000; //2 seconds
-const timerLength = 5;
-const idleCap = 10;
+const timerLength = 60;
+const idleCap = 30;
 const difficulty = 1;
 const tags = {"JOINED": 0, "MOVE": 1, "EGG": 2, "HEALTH": 3, "READY": 4, "STATUS": 5, "NEWPLAYER": 6, "JOINCONFIRM": 7, "PLAYERLEFT": 8, "EGGCONFIRM": 9, "BUMP": 10,
 "ITEMSEND": 11, "ITEMDESTROY": 12, "FULL": 13, "LABEL": 14, "BEGIN": 15, "TARGETSTATUS": 16, "SPECTATE": 17, "IDLE": 18, "ENDGAME": 19, "LOBBYPLAYER": 20,
 "HEALTHSTATES": 21, "TIME": 22};
 
-console.log("server is running on port 3000");
+console.log("server is running on port 7100");
 
 wss.on('connection', ws => {
     if (playerCount > 12) {
@@ -241,7 +242,9 @@ function receiver(ws, json) {
         case tags["ENDGAME"]: //end game
             if (activePlayers < 2){
                 clearTimeout(endTimer);
-                endTimer = setTimeout(endGame(id), 10000);
+                if (!id) endGame();
+                winner = id;
+                endTimer = setTimeout(endGame, 10000);
             }
             break;
         case tags["LOBBYPLAYER"]: //player who exits from main game and goes back to lobby
@@ -340,8 +343,9 @@ function beginGame(){
     gameTime = 1; //init
 }
 
-function endGame(winner = 99) {
+function endGame() {
     console.log("Game ended");
+    if (winner !== 99) console.log(clients[winner].name + ' won!');
     lobby = true;
     clearTimeout(endTimer);
     lobbyCountdown = false;
@@ -364,6 +368,7 @@ function endGame(winner = 99) {
         }
         wss.broadcast(JSON.stringify({ tag: tags["ENDGAME"], winner }));
     }
+    winner = 99;
 }
 
 function sendGameTime(){
@@ -386,7 +391,7 @@ function idlePlayers(){
             clients[i].idle --;
             if (clients[i].idle == 5) console.log(`${clients[i].name} is idle`);
             if (clients[i].idle == (idleCap - 5)) wss.broadcast(JSON.stringify({ tag: tags["IDLE"], id: i, idle: true }));
-            //else if (clients[i].idle < 1) clients[i].socket.close();
+            else if (clients[i].idle < 1) clients[i].socket.close();
         }
     }
     clearTimeout(idleTimer);
@@ -397,7 +402,7 @@ function refreshClient(id){
     clients[id].x = 0;
     clients[id].y = 0;
     clients[id].health = 5;
-    clients[id].scale = ".6";
+    clients[id].scale = "1";
     clients[id].active = false;
     clients[id].ready = false;
     clients[id].spectators = [];
